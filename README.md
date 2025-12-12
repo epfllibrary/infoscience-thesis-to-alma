@@ -1,93 +1,276 @@
-# repository-alma-loader
+# create_records.py — English Documentation
+
+Python script that automatically creates **bibliographic records**, **holdings**, and **items** in Alma from **MARCXML** notices exported from [Infoscience (EPFL)](https://infoscience.epfl.ch).
+
+---
+
+**Author:** Sylvain Vuilleumier  
+Documentary engineering specialist – EPFL  
+sylvain.vuilleumier@epfl.ch  
+**License: Apache 2.0**
+
+---
+
+## 🧭 Key Features
+
+- Automatic harvesting of EPFL theses from Infoscience (Discover/Export API)
+- Full pagination using `spc.page`
+- Custom MARC mapping (Infoscience → EPFL MARC21)
+- Optional XSD validation for MARC21, bib, holding, item
+- SRU lookup in swisscovery
+- Automated Alma creation:
+  - Bibliographic record (IzBib)
+  - Holdings per location
+  - Items with configurable policies
+- Generates a clear **CSV report**
+- **Dry-run mode** to test without modifying Alma
+- Full configuration via `create_records.ini`
+
+---
+
+## 📌 Workflow Summary
+
+1. Retrieves the latest call number via **Alma Analytics**.  
+2. Harvests notices from **Infoscience**, using **automatic pagination** (`spc.page`).  
+3. Converts each source notice into the **final EPFL MARC21 record** (custom mapping).  
+4. Queries **swisscovery** via **SRU** to check if a record already exists.  
+5. If not found:
+   - Generates an Alma `<bib>` structure  
+   - Optionally validates XML using **XSD schemas**  
+   - Creates the **bibliographic record** in Alma  
+   - Creates the associated **holdings** and **items**  
+6. Produces a structured **CSV report**.
+
+---
+
+## ⚙️ Requirements
+
+- Python **3.10+**
+- Libraries:
+  - `requests`
+  - `python-dotenv`
+  - `pymarc`
+  - `lxml`
+  - `almapiwrapper`
+
+Install dependencies:
+
+```bash
+pip install requests python-dotenv pymarc lxml almapiwrapper
+```
+
+⚠️ For almapiwrapper, please check the installation guide : https://almapi-wrapper.readthedocs.io/en/latest/getstarted.html
+
+Set an environment variable named `alma_api_keys` and point it to your alma_api_key.json file.
 
 
+---
 
-## Getting started
+## 🔐 Alma configuration (`.env` file)
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+This API is needed to get the callnumber from analytics.
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+Sensitive settings must be stored in `.env`:
 
-## Add your files
+```dotenv
+ALMA_API_URL=https://api-eu.hosted.exlibrisgroup.com/almaws/v1/
+ALMA_API_ANALYTICS_PATH=/analytics/reports?path=/shared/EPFL/Some/Report
+ALMA_API_KEY=XXXXXXXXXXXXXXX
+```
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+The script also writes:
 
 ```
-cd existing_repo
-git remote add origin https://gitlab.epfl.ch/sisb-public/id/repository-alma-loader.git
-git branch -M main
-git push -uf origin main
+last_call_number.txt
 ```
 
-## Integrate with your tools
+⚠️ This file is **for information only** — it is *never* used as a fallback.
 
-- [ ] [Set up project integrations](https://gitlab.epfl.ch/sisb-public/id/repository-alma-loader/-/settings/integrations)
+---
 
-## Collaborate with your team
+## 🧩 Main configuration (`config_sandbox.ini`)
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+All non-sensitive constants are configured here:
 
-## Test and Deploy
+```ini
+[general]
+env = S
+institution_code = HPH
+check_xsd = true
+report_prefix = report_
+skip_sru_check = false
 
-Use the built-in continuous integration in GitLab.
+[infoscience]
+spc_rpp = 100
+of_format = xm
+since_strategy = previous_month
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+[xsd]
+marc21 = xsd/MARC21slim.xsd
+bib = xsd/rest_bib.xsd
+holding = xsd/rest_holding.xsd
+item = xsd/rest_item.xsd
 
-***
+[holding]
+library_code = hph_bjnbecip
+locations = E02XA,E02SP
+call_number_prefix = ZTK
 
-# Editing this README
+[item]
+po_line =
+department_code = AcqDepthph_bjnbecip
+material_type_code = THESIS
+```
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+Command‑line arguments *override* INI settings.
 
-## Suggestions for a good README
+---
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+## 🌐 Infoscience Harvesting (Pagination)
 
-## Name
-Choose a self-explaining name for your project.
+The script fetches MARCXML records using:
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+```
+https://infoscience.epfl.ch/server/api/discover/export
+  ?configuration=researchoutputs
+  &spc.page=1
+  &spc.rpp=100
+  &f.types=thesis-coar-types:c_db06,authority
+  &query=dc.publisher:EPFL dc.date.created:[YYYY-MM-01 TO *]
+  &spc.sf=dc.date.accessioned
+  &spc.sd=DESC
+  &of=xm
+```
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+- `spc.page` → page index (1, 2, 3, …)  
+- `spc.rpp` → results per page  
+- `of=xm` → MARCXML compatible with `pymarc`
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+`iter_infoscience_records()` keeps fetching pages until an empty page is found.
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+---
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+## 📂 Optional XSD Validation
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+Place XSD schemas under `xsd/`:
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+- `MARC21slim.xsd`
+- `rest_bib.xsd`
+- `rest_holding.xsd`
+- `rest_item.xsd`
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+Disable XSD validation:
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+```bash
+python create_records.py --no-xsd-check
+```
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+---
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+## 🚀 Running the Script
 
-## License
-For open source projects, say how it is licensed.
+General syntax:
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+```bash
+python create_records.py [options]
+```
+
+### Main Options
+
+| Option | Description |
+|--------|-------------|
+| `--dry-run` | Runs the pipeline **without creating anything** in Alma |
+| `--use-static-url` | Fetch a single fixed Infoscience URL (debug mode) |
+| `--spc-page` | Starting page for pagination (default 1) |
+| `--spc-rpp` | Results per page (default 100) |
+| `--env` | Alma environment (`S` sandbox / `P` production) |
+| `--institution-code` | Alma IZ code (e.g., `HPH`, `EPF`) |
+| `--max-records` | Limit total processed records |
+| `--config-file` | Load configuration from an INI file |
+
+---
+
+## 🧪 Usage Examples
+
+### 1. Dry‑run (no Alma writes)
+
+```bash
+python create_records.py --dry-run --max-records 5
+```
+
+### 2. Debugging a specific record
+
+```bash
+python create_records.py --dry-run --use-static-url
+```
+
+### 3. Full run with config file + pagination
+
+```bash
+python create_records.py   --config-file create_records.ini   --env S   --institution-code HPH   --max-records 10
+```
+
+### 4. Run without XSD validation
+
+```bash
+python create_records.py --no-xsd-check --max-records 3
+```
+
+---
+
+## 📄 CSV Report
+
+Output file:
+
+```
+report_YYYY-MM-DD.csv
+```
+
+Contains fields such as:
+
+- Index  
+- Infoscience ID  
+- Title / Author  
+- Call number  
+- SRU match  
+- MMS ID  
+- Bib status  
+- Holdings & items per location  
+- Errors (if any)
+
+---
+
+## 🪵 Logging
+
+Two log files are generated:
+
+- `create_records.log` — normal operations (INFO+)  
+- `erreurs.log` — detailed errors (ERROR+, with traceback)
+
+Wrapper noise like `"no holding found"` is automatically filtered.
+
+---
+
+## 🧱 Code Structure
+
+- Configuration loader (INI + `.env`)  
+- Logger and error handler  
+- MARC transformation layer  
+- XSD validation engine  
+- Infoscience harvesting with pagination  
+- SRU lookup  
+- Alma integration (Bib / Holding / Item)  
+- CSV report generator  
+- CLI interface (argparse)  
+- Main pipeline  
+
+---
+
+## ✨ Future Ideas
+
+- Add `--since-date` for custom Infoscience time windows  
+- Add CLI for changing `of_format` (`xm`, `xmJ`, …)  
+
+## 📜 License
+
+Distributed under the **Apache License 2.0**.

@@ -1,0 +1,14 @@
+
+# Environment files
+.env
+
+# Temporary data files
+*.csv
+*.log
+*.ini
+
+# Specific temporary file
+last_call_number.txt
+
+# Exception: keep the configuration file in the root
+!config_sandbox.ini
