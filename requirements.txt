@@ -3,3 +3,4 @@ python-dotenv==1.2.1
 pymarc==5.3.1
 lxml==6.0.2 
 almapiwrapper==1.3.0
+pandas==2.3.3
