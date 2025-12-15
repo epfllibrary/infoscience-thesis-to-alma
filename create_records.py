@@ -31,8 +31,9 @@ ENV = "S"
 
 LOGGER_NAME = "Get records from Infoscience"
 INFO_LOG = "create_records.log"
-ERROR_LOG = "erreurs.log"
+ERROR_LOG = "errors.log"
 REPORT_CSV = f"rapport_{date.today().isoformat()}.csv"
+REPORT_DIR = "repports"
 
 HOLDING_INFO_DEFAULT = {
     "locations": ["E02XA", "E02SP"],
@@ -90,7 +91,7 @@ def get_logger(console_level: int = logging.INFO) -> logging.Logger:
     )
 
     # Fichier erreurs (ERROR+, avec traceback)
-    error_fh = logging.FileHandler(ERROR_LOG, encoding="utf-8")
+    error_fh = logging.FileHandler(ERROR_LOG, encoding="utf-8", delay=True)
     error_fh.setLevel(logging.ERROR)
     error_fh.setFormatter(
         logging.Formatter("%(asctime)s - %(levelname)s - %(name)s - %(message)s")
@@ -1791,7 +1792,9 @@ def main(
         ]
 
         report_filename = f"{general_cfg['report_prefix']}{date.today().isoformat()}.csv"
-        csv_path = Path(report_filename)
+        report_dir = Path(REPORT_DIR)
+        report_dir.mkdir(parents=True, exist_ok=True)
+        csv_path = report_dir / report_filename
         with csv_path.open("w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter=";")
             writer.writeheader()
