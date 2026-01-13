@@ -18,6 +18,8 @@ from lxml import etree
 from pymarc import Record, Field, Subfield, record_to_xml
 from pymarc.marcxml import parse_xml_to_array
 from urllib.parse import quote
+from bs4 import BeautifulSoup
+import html
 
 from almapiwrapper.inventory import Item, IzBib, Holding
 
@@ -43,6 +45,7 @@ HOLDING_INFO_DEFAULT = {
 
 ITEM_INFO_DEFAULT = {
     "po_line": None,
+    "work_order_type": "AcqWorkOrder",
     "department_code": "AcqDepthph_bjnbecip",
     "material_type_code": "THESIS",
 }
@@ -145,6 +148,20 @@ root_logger.addFilter(SuppressIzBibNoHolding())
 # =============================================================================
 
 
+def clean_html(text: Optional[str]) -> Optional[str]:
+    """
+    Supprime toutes les balises HTML et décode les entités HTML.
+    Ex: "<i>Data-driven</i> &amp; control" → "Data-driven & control"
+    """
+    if not text:
+        return text
+
+    text = html.unescape(text)
+    soup = BeautifulSoup(text, "lxml")
+    cleaned = soup.get_text(separator=" ", strip=True)
+    cleaned = " ".join(cleaned.split())
+    return cleaned
+
 def fget(r: Record, tag: str, code: str) -> Optional[str]:
     """Retourne la première valeur du sous-champ `code` pour le champ `tag`, ou None."""
     f = r.get(tag)
@@ -230,9 +247,9 @@ def build_final_record(src: Record) -> Record:
     dst.add_field(Field(tag="100", indicators=["1", " "], subfields=f100_subs))
 
     # 245 10 : Titre principal
-    t_a = fget(src, "245", "a")
-    t_b = fget(src, "245", "b")
-    t_c = invert_name_comma(author700a)
+    t_a = clean_html(fget(src, "245", "a"))
+    t_b = clean_html(fget(src, "245", "b"))
+    t_c = clean_html(invert_name_comma(author700a))
     subf_245: list[Subfield] = []
     if t_a:
         subf_245.append(Subfield("a", t_a))
@@ -411,8 +428,9 @@ def extract_marc_info(record: Record) -> Dict[str, Optional[str]]:
         f245 = title_fields[0]
         title_parts = [f245.get("a"), f245.get("b")]
         raw_title = " ".join(p for p in title_parts if p)
-        title = raw_title.strip(" /") if raw_title else None
-        responsibility = f245.get("c")
+        title = clean_html(raw_title.strip(" /")) if raw_title else None
+
+        responsibility = clean_html(f245.get("c"))
 
     # 100 : auteur principal
     f100s = record.get_fields("100")
@@ -1017,6 +1035,7 @@ def build_item_xml_for_holding(
     base_status: str,
     po_line: Optional[str] = None,
     arrival_date: Optional[str] = None,
+    work_order_type: Optional[str] = None,
     department_code: Optional[str] = None,
     material_type_code: str = "THESIS",
     item_policy_code: Optional[str] = None,
@@ -1052,9 +1071,11 @@ def build_item_xml_for_holding(
     if holding.location:
         etree.SubElement(item_data_el, "location").text = holding.location
 
-    if department_code:
+    if department_code and work_order_type:
         etree.SubElement(item_data_el, "process_type").text = "WORK_ORDER_DEPARTMENT"
+        etree.SubElement(item_data_el, "work_order_type").text = work_order_type
         etree.SubElement(item_data_el, "work_order_at").text = department_code
+
 
     return item_el
 
@@ -1062,7 +1083,8 @@ def build_item_xml_for_holding(
 def creer_item_pour_une_holding(
     holding: Holding,
     po_line: Optional[str] = None,
-    department_code: Optional[str] = "AcqDepthph_bjnbecip",
+    work_order_type: Optional[str] = None,
+    department_code: Optional[str] = None,
     material_type_code: str = "THESIS",
     item_schema: Optional[etree.XMLSchema] = None,
     zone: str = "HPH",
@@ -1088,11 +1110,14 @@ def creer_item_pour_une_holding(
         log_info("⚠️ Localisation '%s' non gérée -> aucun item créé.", loc)
         return None
 
+    log_info("WorkOrder params: work_order_type=%s department=%s", work_order_type, department_code)
+
     item_el = build_item_xml_for_holding(
         holding=holding,
         base_status=base_status,
         po_line=po_line,
         department_code=department_code,
+        work_order_type=work_order_type,
         material_type_code=material_type_code,
         item_policy_code=item_policy_code,
     )
@@ -1103,6 +1128,22 @@ def creer_item_pour_une_holding(
         for err in errors:
             log_error("   - %s", err)
         return None
+
+    if work_order_type and department_code:
+        log_info(
+            "Création item avec Work Order: type=%s, department=%s",
+            work_order_type,
+            department_code,
+        )
+
+    if logger and logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "WorkOrder demandé: type=%s department=%s",
+            work_order_type,
+            department_code,
+        )
+        logger.debug("XML ITEM envoyé:\n%s", etree.tostring(item_el, pretty_print=True, encoding="unicode"))
+
 
     item = Item(
         holding=holding,
@@ -1265,6 +1306,7 @@ def load_config(
         "check_xsd": True,
         "report_prefix": "rapport_",
         "skip_sru_check": False,
+        "log_level": "INFO",
     }
 
     infoscience_cfg: Dict[str, Any] = {
@@ -1288,6 +1330,7 @@ def load_config(
 
     item_info: Dict[str, Any] = {
         "po_line": None,
+        "work_order_type": "AcqWorkOrder",
         "department_code": "AcqDepthph_bjnbecip",
         "material_type_code": "THESIS",
     }
@@ -1336,6 +1379,9 @@ def load_config(
             general_cfg["skip_sru_check"] = sec.getboolean(
                 "skip_sru_check", fallback=general_cfg["skip_sru_check"]
             )
+        if "log_level" in sec:
+            general_cfg["log_level"] = sec.get("log_level", general_cfg["log_level"]).upper()
+
 
     # [infoscience]
     if parser.has_section("infoscience"):
@@ -1383,14 +1429,18 @@ def load_config(
         if "po_line" in sec:
             val = sec.get("po_line", "").strip()
             item_info["po_line"] = val or None
-        if "department_code" in sec:
-            item_info["department_code"] = sec.get(
-                "department_code", item_info["department_code"]
-            )
         if "material_type_code" in sec:
             item_info["material_type_code"] = sec.get(
                 "material_type_code", item_info["material_type_code"]
             )
+        if "work_order_type" in sec:
+            item_info["work_order_type"] = sec.get(
+                "work_order_type", item_info.get("work_order_type")
+        )
+        if "department_code" in sec:
+            item_info["department_code"] = sec.get(
+                "department_code", item_info["department_code"]
+        )
 
     logger.info(
         "Configuration chargée depuis %s : general=%s, infoscience=%s, holding=%s, item=%s",
@@ -1419,8 +1469,19 @@ def main(
     config_file: Optional[str] = None,
     skip_sru_check: bool = False,
 ) -> None:
-    # Logger
-    logger = get_logger()
+    # 1) logger bootstrap (INFO)
+    logger = get_logger(console_level=logging.INFO)
+
+    # 2) charger config
+    general_cfg, infoscience_cfg, xsd_cfg, holding_info, item_info = load_config(
+        config_file, logger
+    )
+
+    # 3) logger final selon config
+    log_level_str = general_cfg.get("log_level", "INFO").upper()
+    log_level = getattr(logging, log_level_str, logging.INFO)
+    logger = get_logger(console_level=log_level)
+
     logger.info(
         "Début du script. %s (dry_run=%s, use_static_url=%s, env=%s, inst=%s, spc_page=%d, "
         "spc_rpp=%d, check_xsd=%s, skip_sru_check=%s, max_records=%d, config_file=%s)",
@@ -1706,7 +1767,8 @@ def main(
                     item_id = creer_item_pour_une_holding(
                         holding=holding,
                         po_line=item_info["po_line"],
-                        department_code=item_info["department_code"],
+                        work_order_type=item_info.get("work_order_type"),
+                        department_code=item_info.get("department_code"),
                         material_type_code=item_info["material_type_code"],
                         item_schema=item_schema,
                         zone=institution_code,

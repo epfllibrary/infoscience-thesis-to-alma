@@ -51,12 +51,13 @@ sylvain.vuilleumier@epfl.ch
   - `python-dotenv`
   - `pymarc`
   - `lxml`
+  - `beautifulsoup4`
   - `almapiwrapper`
 
 Install dependencies:
 
 ```bash
-pip install requests python-dotenv pymarc lxml almapiwrapper
+pip install requests python-dotenv pymarc lxml beautifulsoup4 almapiwrapper
 ```
 
 ⚠️ For almapiwrapper, please check the installation guide : https://almapi-wrapper.readthedocs.io/en/latest/getstarted.html
@@ -256,6 +257,7 @@ Wrapper noise like `"no holding found"` is automatically filtered.
 - Configuration loader (INI + `.env`)  
 - Logger and error handler  
 - MARC transformation layer  
+- HTML normalization layer for Infoscience metadata (BeautifulSoup)
 - XSD validation engine  
 - Infoscience harvesting with pagination  
 - SRU lookup  
@@ -265,6 +267,66 @@ Wrapper noise like `"no holding found"` is automatically filtered.
 - Main pipeline  
 
 ---
+
+
+## ⚠️ Known limitations and special handling
+
+### Infoscience HTML contamination in titles
+
+Infoscience sometimes returns MARC titles containing HTML markup
+(`<i>`, `<sub>`, `<sup>`, `<span>`, entities like `&amp;`, etc.).
+These elements:
+
+- pollute Alma bibliographic records
+- break SRU lookups
+- degrade CSV exports
+
+For this reason, the script applies systematic HTML normalization
+(using BeautifulSoup) on:
+
+- MARC 245$a
+- MARC 245$b
+- responsibility statements (245$c)
+
+Example:
+
+```
+Before:
+<i>Data-driven</i> Control &amp; Optimization
+
+After:
+Data-driven Control & Optimization
+```
+
+This normalization is applied **before** MARC generation, SRU lookup
+and CSV reporting.
+
+### Alma Work Order API limitation
+
+The script supports sending Work Order information when creating items:
+
+```ini
+[item]
+work_order_type = AcqWorkOrder
+department_code = AcqDepthph_bjnbecip
+```
+
+These are transmitted to Alma using:
+
+```xml
+<process_type>WORK_ORDER_DEPARTMENT</process_type>
+<work_order_type>...</work_order_type>
+<work_order_at>...</work_order_at>
+```
+
+However, as of 2025, Alma’s REST API ignores these values:
+
+- items are created successfully
+- but no Work Order is visible in the Alma UI
+
+This is an API limitation, not a bug in the script.
+The fields are kept for future compatibility.
+
 
 ## ✨ Future Ideas
 
