@@ -7,6 +7,7 @@ from datetime import date, datetime
 from pathlib import Path
 import io
 import logging
+import re
 import sys
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -162,6 +163,15 @@ def clean_html(text: Optional[str]) -> Optional[str]:
     cleaned = " ".join(cleaned.split())
     return cleaned
 
+def extract_year(val: Optional[str]) -> Optional[str]:
+    """
+    Extrait une année YYYY depuis une chaîne (ex: "2025.", "[2024]", "2023-01-15").
+    """
+    if not val:
+        return None
+    m = re.search(r"(19|20)\d{2}", val)
+    return m.group(0) if m else None
+
 def fget(r: Record, tag: str, code: str) -> Optional[str]:
     """Retourne la première valeur du sous-champ `code` pour le champ `tag`, ou None."""
     f = r.get(tag)
@@ -224,7 +234,13 @@ def build_final_record(src: Record) -> Record:
 
     # LDR / 008 : Champs de contrôle (statiques)
     dst.leader = "00000nam a2200000 c 4500"
-    dst.add_field(Field(tag="008", data="||||||s2025    sz   a   m    00| | eng  "))
+    # 008 : type de date + année (YYYY) depuis 260$c (fallback 502$d, puis année courante)
+    year = (
+        extract_year(fget(src, "260", "c"))
+        or extract_year(fget(src, "502", "d"))
+        or str(date.today().year)
+    )
+    dst.add_field(Field(tag="008", data=f"||||||s{year}    sz   a   m    00| | eng  "))
 
     # 040 : Agence de catalogage (statiques)
     dst.add_field(
