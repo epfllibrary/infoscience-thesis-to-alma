@@ -235,11 +235,18 @@ def build_final_record(src: Record) -> Record:
     # LDR / 008 : Champs de contrôle (statiques)
     dst.leader = "00000nam a2200000 c 4500"
     # 008 : type de date + année (YYYY) depuis 260$c (fallback 502$d, puis année courante)
-    year = (
-        extract_year(fget(src, "260", "c"))
-        or extract_year(fget(src, "502", "d"))
-        or str(date.today().year)
-    )
+    year_260 = extract_year(fget(src, "260", "c"))
+    year_502 = extract_year(fget(src, "502", "d"))
+
+    fallback_used = False
+    if year_260:
+        year = year_260
+    elif year_502:
+        year = year_502
+    else:
+        year = str(date.today().year)
+        fallback_used = True
+
     dst.add_field(Field(tag="008", data=f"||||||s{year}    sz   a   m    00| | eng  "))
 
     # 040 : Agence de catalogage (statiques)
@@ -1203,6 +1210,8 @@ class NoticeReport:
     author: Optional[str]
     call_number: Optional[str]
 
+    warnings: List[str] = field(default_factory=list)
+
     sru_exists: Optional[bool] = None
 
     mms_id: Optional[str] = None
@@ -1210,6 +1219,9 @@ class NoticeReport:
     bib_error: Optional[str] = None
 
     locations: List[Dict[str, Any]] = field(default_factory=list)
+
+    def add_warning(self, msg: str) -> None:
+        self.warnings.append(msg)
 
     def add_location(
         self,
@@ -1286,6 +1298,7 @@ class NoticeReport:
             "mms_id": self.mms_id or "",
             "bib_status": self.bib_status or "",
             "bib_error": self.bib_error or "",
+            "warnings": " | ".join(self.warnings) if self.warnings else "",
             "holding_locations": join_or_empty(holding_locations),
             "holding_ids": join_or_empty(holding_ids),
             "holding_statuses": join_or_empty(holding_statuses),
@@ -1590,6 +1603,11 @@ def main(
         # Construction du record MARC final (pour extractions & debug)
         try:
             current_record = build_final_record(record)
+            # Détection du fallback année (260$c et 502$d vides)
+            if not extract_year(fget(record, "260", "c")) and not extract_year(fget(record, "502", "d")):
+                msg = "Publication year missing (260$c / 502$d) → fallback to current year used in 008"
+                logger.warning("Record %d: %s", record_index, msg)
+                notice_report.add_warning(msg)
             logger.info("Construction du record %d réussie", record_index)
         except Exception:
             logger.exception(
@@ -1725,12 +1743,26 @@ def main(
             reports.append(notice_report)
             continue
 
-        # DRY-RUN : on ne crée rien dans Alma, mais on note que tout est OK jusqu'ici
+        # DRY-RUN : on ne crée rien dans Alma, mais on affiche ce qui serait envoyé
         if dry_run:
             logger.info(
                 "DRY-RUN: BIB/holdings/items NON créés pour le record %d (tout est valide jusqu'ici).",
                 record_index,
             )
+            # Affiche le MARCXML final (record) qui serait envoyé à Alma
+            logger.info(
+                "DRY-RUN MARCXML (record %d):\n%s",
+                record_index,
+                etree.tostring(rec_el, pretty_print=True, encoding="unicode"),
+            )
+
+            # Affichage du <bib> Alma complet
+            logger.info(
+                "DRY-RUN Alma <bib> (record %d):\n%s",
+                record_index,
+                etree.tostring(bib_el, pretty_print=True, encoding="unicode"),
+            )
+
             notice_report.bib_status = "DRY_RUN_OK"
             notice_report.bib_error = ""
             reports.append(notice_report)
@@ -1860,6 +1892,7 @@ def main(
             "mms_id",
             "bib_status",
             "bib_error",
+            "warnings",
             "holding_locations",
             "holding_ids",
             "holding_statuses",
