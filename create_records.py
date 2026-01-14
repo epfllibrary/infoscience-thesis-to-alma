@@ -21,6 +21,7 @@ from pymarc.marcxml import parse_xml_to_array
 from urllib.parse import quote
 from bs4 import BeautifulSoup
 import html
+import time
 
 from almapiwrapper.inventory import Item, IzBib, Holding
 
@@ -1548,11 +1549,27 @@ def main(
 
     of_format = infoscience_cfg["of_format"]
 
-    # 1) Récupère la cote dans Analytics
-    current_call_number, error = get_last_call_number_from_analytics()
+    # 1) Récupère la cote dans Analytics (retry x3)
+    current_call_number = None
+    error = None
+
+    for attempt in range(1, 4):
+        current_call_number, error = get_last_call_number_from_analytics()
+        if current_call_number is not None and not error:
+            break
+
+        # Log + petite pause avant retry (sauf après la 3e tentative)
+        logger.warning(
+            "Échec récupération cote Analytics (tentative %d/3) : %s",
+            attempt,
+            error or "valeur vide / None",
+        )
+        if attempt < 3:
+            time.sleep(5)
+
     if error or current_call_number is None:
         handle_error(
-            "Problème lors de la récupération de la Cote dans Analytics --> Fin du script",
+            "Problème lors de la récupération de la Cote dans Analytics après 3 tentatives --> Fin du script",
             exc=RuntimeError(error or "Erreur inconnue"),
             stop=True,
         )
@@ -1594,9 +1611,6 @@ def main(
                 max_records,
             )
             break
-
-        call_number_value += 1
-        call_number_str = f"{holding_info['call_number_prefix']} {call_number_value}"
 
         logger.info("Traitement de la notice n°%d", record_index)
 
@@ -1642,7 +1656,7 @@ def main(
             infoscience_id=info_marc_current_record.get("infoscience_id"),
             title=info_marc_current_record.get("title"),
             author=info_marc_current_record.get("author"),
-            call_number=call_number_str,
+            call_number=None,
         )
 
         if skip_sru_check:
@@ -1668,11 +1682,18 @@ def main(
         if exists:
             logger.info("Notice déjà présente dans Alma, création ignorée.")
             notice_report.bib_status = "SKIPPED_SRU_EXISTS"
+            notice_report.call_number = "N/A"
+            notice_report.add_warning(
+               "Record already exists in SRU: call number not assigned"
+            )
             reports.append(notice_report)
             continue
 
         logger.info("Pas présent dans SRU, préparation de la notice.")
 
+        call_number_value += 1
+        call_number_str = f"{holding_info['call_number_prefix']} {call_number_value}"
+        notice_report.call_number = call_number_str
         # 1) Construire <bib> + <record> à partir de la notice source
         try:
             rec_el, bib_el = build_bib_with_record(record)

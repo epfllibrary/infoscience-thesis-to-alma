@@ -87,6 +87,10 @@ last_call_number.txt
 
 ⚠️ This file is **for information only** — it is *never* used as a fallback.
 
+The call number is retrieved from Alma Analytics at startup.
+If the retrieval fails, the script automatically retries up to **3 times**
+before stopping execution.
+
 ---
 
 ## 🧩 Main configuration (`config_sandbox.ini`)
@@ -236,10 +240,41 @@ Contains fields such as:
 - SRU match  
 - MMS ID  
 - Bib status  
-- Holdings & items per location  
+- Holdings & items per location
+- Warning (if any)
 - Errors (if any)
 
 ---
+
+### Warnings column
+
+The CSV report includes a `warnings` column intended for **functional warnings**
+that do not stop the processing but require attention.
+
+Typical examples:
+
+- Record already exists in swisscovery (SRU):
+  - bibliographic creation is skipped
+  - no call number is assigned
+  - `call_number = N/A`
+  - a warning explains the reason
+
+Warnings are meant to provide **human-readable explanations**
+for non-blocking situations.
+
+### Call number assignment rules
+
+The call number is assigned **only when a bibliographic record is actually created in Alma**.
+
+If a record is found in swisscovery via SRU:
+
+- creation is skipped
+- the call number is not consumed
+- the CSV report contains:
+
+call_number = N/A
+bib_status = SKIPPED_SRU_EXISTS
+warnings = Record already exists in SRU: call number not assigned
 
 ## 🪵 Logging
 
