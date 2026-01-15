@@ -11,4 +11,4 @@
 last_call_number.txt
 
 # Exception: keep the configuration file in the root
-!config_sandbox.ini
+!config_sample.ini
