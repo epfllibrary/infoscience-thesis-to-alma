@@ -78,7 +78,7 @@ PYTHON_BIN="$VENV_DIR/bin/python"
 # --- Python script & config ---
 PYTHON_SCRIPT="$BASE_DIR/create_records.py"
 CONFIG_FILE="$BASE_DIR/config_sandbox.ini"
-PYTHON_EXTRA_ARGS="--dry-run --max-records 1"
+PYTHON_EXTRA_ARGS="$(get_ini_value bash python_extra_args "$CONFIG_FILE")"
 
 # --- Mail ---
 SMTP_SERVER="$(get_ini_value mail smtp_server "$CONFIG_FILE")"
@@ -98,7 +98,7 @@ ATTACHMENT="$BASE_DIR/$OUTPUT_DIR/${REPORT_PREFIX}${DATE}.csv"
 REPORT_DIR="$BASE_DIR/repports"
 DATE="$(date +%Y-%m-%d)"
 #ATTACHMENT="$REPORT_DIR/epfl_thesis_report_${DATE}.csv"
-ATTACHMENT="$REPORT_DIR/rapport_${DATE}.csv"
+ATTACHMENT="$REPORT_DIR/${REPORT_PREFIX}${DATE}.csv"
 
 # --- Logs ---
 ERROR_FILE="$BASE_DIR/errors.log"
@@ -224,8 +224,17 @@ Script  : ${SCRIPT_FULLPATH}" || true
   exit 0
 fi
 
-# Rapport manquant => alerte
-[ -f "$ATTACHMENT" ] || die "Rapport introuvable après exécution Python: $ATTACHMENT"
+# --- Attente du fichier (max 30 secondes) ---
+echo "⏳ Vérification de la génération du rapport..."
+MAX_WAIT=30   # secondes
+WAITED=0
+
+while [ ! -f "$ATTACHMENT" ] && [ $WAITED -lt $MAX_WAIT ]; do
+  sleep 2
+  WAITED=$((WAITED + 2))
+done
+# Rapport manquant => alerte & stop
+[ -f "$ATTACHMENT" ] || die "Rapport introuvable après attente (${MAX_WAIT}s) : $ATTACHMENT"
 
 # Envoi rapport
 sendemail \
