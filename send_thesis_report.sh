@@ -51,6 +51,15 @@
 
 set -Eeuo pipefail
 
+# --- Encodage / locale ---
+# Assure un encodage UTF-8 cohérent pour les accents dans les emails.
+export LANG="${LANG:-C.UTF-8}"
+export LC_ALL="${LC_ALL:-C.UTF-8}"
+
+# --- Contexte d'exécution (pour les emails) ---
+HOSTNAME_FQDN="$(hostname -f 2>/dev/null || hostname)"
+SCRIPT_FULLPATH="$(realpath "$0")"
+
 get_ini_value() {
   local section=$1 key=$2 file=$3
   awk -F' *= *' \
@@ -75,6 +84,7 @@ PYTHON_EXTRA_ARGS="--dry-run --max-records 1"
 SMTP_SERVER="$(get_ini_value mail smtp_server "$CONFIG_FILE")"
 FROM="$(get_ini_value mail from "$CONFIG_FILE")"
 DEST_STANDARD="$(get_ini_value mail to_standard "$CONFIG_FILE")"
+CC_STANDARD="$(get_ini_value mail cc_standard "$CONFIG_FILE")"
 DEST_ERROR="$(get_ini_value mail to_error "$CONFIG_FILE")"
 
 OUTPUT_DIR="$(get_ini_value report output_dir "$CONFIG_FILE")"
@@ -119,6 +129,8 @@ send_alert() {
     -t "$DEST_ERROR" \
     -u "$subject" \
     -m "$message" \
+    -o message-content-type=text/plain \
+    -o message-charset=UTF-8 \
     "${attach_args[@]}" \
     -s "$SMTP_SERVER" \
     -v
@@ -134,11 +146,19 @@ Le script EPFL a rencontré un problème :
 
 $msg
 
+Contexte d'exécution :
+- Serveur : ${HOSTNAME_FQDN}
+- Script  : ${SCRIPT_FULLPATH}
+
 Merci de corriger le problème. Le run log est joint.
 Si errors.log existe, il est également joint (à supprimer manuellement après résolution).
 
 Cordialement,
-Script automatique EPFL" || true
+Script automatique EPFL
+
+---
+Serveur : ${HOSTNAME_FQDN}
+Script  : ${SCRIPT_FULLPATH}" || true
   exit 1
 }
 
@@ -170,7 +190,11 @@ Merci d'analyser et de supprimer ce fichier manuellement après résolution.
 Aucun rapport n'a été envoyé.
 
 Cordialement,
-Script automatique EPFL" || true
+Script automatique EPFL
+
+---
+Serveur : ${HOSTNAME_FQDN}
+Script  : ${SCRIPT_FULLPATH}" || true
   exit 0
 fi
 
@@ -192,7 +216,11 @@ Merci de corriger puis de supprimer errors.log manuellement après résolution.
 Aucun rapport n'a été envoyé.
 
 Cordialement,
-Script automatique EPFL" || true
+Script automatique EPFL
+
+---
+Serveur : ${HOSTNAME_FQDN}
+Script  : ${SCRIPT_FULLPATH}" || true
   exit 0
 fi
 
@@ -203,13 +231,20 @@ fi
 sendemail \
   -f "$FROM" \
   -t "$DEST_STANDARD" \
+  -cc "$CC_STANDARD" \
   -u "EPFL Thesis Report - ${DATE}" \
   -m "Bonjour,
 
 Veuillez trouver en pièce jointe le rapport EPFL du ${DATE}.
 
+Contexte d'exécution :
+- Serveur : ${HOSTNAME_FQDN}
+- Script  : ${SCRIPT_FULLPATH}
+
 Cordialement,
 EPFL" \
+  -o message-content-type=text/plain \
+  -o message-charset=UTF-8 \
   -a "$ATTACHMENT" \
   -s "$SMTP_SERVER" \
   -v
