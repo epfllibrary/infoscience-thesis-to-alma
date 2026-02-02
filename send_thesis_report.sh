@@ -101,8 +101,12 @@ DATE="$(date +%Y-%m-%d)"
 ATTACHMENT="$REPORT_DIR/${REPORT_PREFIX}${DATE}.csv"
 
 # --- Logs ---
-ERROR_FILE="$BASE_DIR/errors.log"
-RUN_LOG="$BASE_DIR/run_${DATE}.log"
+LOG_DIR="$BASE_DIR/log"
+mkdir -p "$LOG_DIR"
+
+ERROR_FILE="$LOG_DIR/errors.log"
+RUN_LOG="$LOG_DIR/run_${DATE}.log"
+PYTHON_LOG="$LOG_DIR/python.log"
 
 export PATH="/usr/bin:/bin"
 exec > >(tee -a "$RUN_LOG") 2>&1
@@ -202,7 +206,7 @@ cd "$BASE_DIR"
 
 # Exécution Python
 echo "=== Lancement Python (venv) ==="
-"$PYTHON_BIN" "$PYTHON_SCRIPT" --config-file "$CONFIG_FILE" $PYTHON_EXTRA_ARGS >> "$BASE_DIR/python.log" 2>&1
+"$PYTHON_BIN" "$PYTHON_SCRIPT" --config-file "$CONFIG_FILE" $PYTHON_EXTRA_ARGS >> "$PYTHON_LOG" 2>&1
 echo "=== Fin Python ==="
 
 # errors.log créé => alerte & stop
