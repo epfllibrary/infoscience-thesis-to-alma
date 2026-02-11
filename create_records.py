@@ -937,9 +937,10 @@ def build_holding_marc(
     Construit un record MARC interne pour une holding Alma.
     """
     record = Record(force_utf8=True)
-    record.leader = "00000nx a2200061zn 450"
+    record.leader = "00137nx##a2200061zn#4500"
 
-    record.add_field(Field(tag="008", data="1011252u 8 4001uueng0000000"))
+    today_str = date.today().strftime("%y%m%d")
+    record.add_field(Field(tag="008", data=f"{today_str}2u####8###4001uueng0000000"))
     record.add_field(
         Field(
             tag="852",
