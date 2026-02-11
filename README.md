@@ -1,4 +1,4 @@
-# create_records.py — English Documentation
+# create_records.py — Documentation
 
 Python script that automatically creates **bibliographic records**, **holdings**, and **items** in Alma from **MARCXML** notices exported from [Infoscience (EPFL)](https://infoscience.epfl.ch).
 

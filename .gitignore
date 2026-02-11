@@ -12,3 +12,6 @@ last_call_number.txt
 
 # Exception: keep the configuration file in the root
 !config_sample.ini
+
+# Ignore log directory
+/log/
