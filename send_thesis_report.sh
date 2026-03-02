@@ -89,6 +89,8 @@ DEST_ERROR="$(get_ini_value mail to_error "$CONFIG_FILE")"
 
 OUTPUT_DIR="$(get_ini_value report output_dir "$CONFIG_FILE")"
 REPORT_PREFIX="$(get_ini_value general report_prefix "$CONFIG_FILE")"
+ALMA_API_KEYS_RAW="$(get_ini_value general alma_api_keys "$CONFIG_FILE")"
+ALMA_API_KEYS="$(printf '%s' "$ALMA_API_KEYS_RAW" | envsubst)"
 FILENAME_TEMPLATE="$(get_ini_value report filename_template "$CONFIG_FILE")"
 
 DATE="$(date +%Y-%m-%d)"
@@ -203,6 +205,10 @@ Script  : ${SCRIPT_FULLPATH}" || true
 fi
 
 cd "$BASE_DIR"
+
+# Exporte le chemin où se trouve les clés API d'Alma pour le script Python (utilisé par Almapi wrapper)
+[ -f "$ALMA_API_KEYS" ] || die "Fichier introuvable : $ALMA_API_KEYS. Placez-le dans \$HOME ou mettez un chemin absolu dans config_xxx.ini."
+export alma_api_keys="$ALMA_API_KEYS"
 
 # Exécution Python
 echo "=== Lancement Python (venv) ==="
