@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import csv
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 import io
 import logging
@@ -34,9 +34,13 @@ INSTITUTION_CODE = "HPH"
 ENV = "S"
 
 LOGGER_NAME = "Get records from Infoscience"
-INFO_LOG = "create_records.log"
-ERROR_LOG = "errors.log"
-REPORT_CSV = f"rapport_{date.today().isoformat()}.csv"
+# Format des dates pour les logs et rapports : YYYY-MM-DD
+TODAY = date.today().isoformat()
+LOG_DIR = "log"
+Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
+INFO_LOG = f"log/create_records_{TODAY}.log"
+ERROR_LOG = f"log/errors_{TODAY}.log"
+REPORT_CSV = f"rapport_{TODAY}.csv"
 REPORT_DIR = "repports"
 
 HOLDING_INFO_DEFAULT = {
@@ -650,6 +654,31 @@ def first_day_previous_month(ref: Optional[date] = None) -> str:
         month -= 1
     return f"{year:04d}-{month:02d}-01"
 
+def get_date_range(ref: Optional[date] = None) -> Tuple[str, str]:
+    """
+    Retourne (start, end) pour la requête Infoscience.
+
+    - si ref est None → mois précédent, end="*"
+    - si ref est fourni → mois de ref, end = dernier jour du mois
+    """
+
+    if ref is None:
+        start = first_day_previous_month()
+        return start, "*"
+
+    year = ref.year
+    month = ref.month
+
+    start = f"{year:04d}-{month:02d}-01"
+
+    if month == 12:
+        next_month = date(year + 1, 1, 1)
+    else:
+        next_month = date(year, month + 1, 1)
+
+    end = (next_month - timedelta(days=1)).isoformat()
+
+    return start, end
 
 def build_infoscience_url(
     spc_page: int = 1,
@@ -663,15 +692,18 @@ def build_infoscience_url(
 
     - spc_page : numéro de page (1, 2, 3, ...)
     - spc_rpp  : nombre de résultats par page (ex. 100)
-    - ref      : date de référence pour la fenêtre temporelle
+    - ref      : date de référence pour le filtre dc.date.created (format date) ;
     - of_format: format de sortie (xm, xmJ, etc.)
     """
     base = "https://infoscience.epfl.ch/server/api/discover/export"
     configuration = "researchoutputs"
     f_types = "thesis-coar-types:c_db06,authority"
 
-    start = first_day_previous_month(ref)
-    query_value = f"dc.publisher:EPFL dc.date.created:[{start} TO *]"
+    start, end = get_date_range(ref)
+    query_value = (
+        f"dc.publisher:(EPFL) OR dc.publisher:(Ecole polytechnique federale de Lausanne) "
+        f"dc.date.created:[{start} TO {end}]"
+    )
     query_enc = quote(query_value, safe="")
 
     params = (
@@ -727,6 +759,9 @@ def iter_infoscience_records(
     # Cas URL dynamique : pagination via spc.page
     spc_page = start_spc_page
     total = 0
+
+    start, end = get_date_range(ref)
+    logger.info("Infoscience date range: %s → %s", start, end)
 
     while True:
         url = build_infoscience_url(
@@ -1069,7 +1104,7 @@ def build_item_xml_for_holding(
     Construit un élément <item> (XML Alma) pour une holding donnée.
     """
     if arrival_date is None:
-        arrival_date = date.today().isoformat()
+        arrival_date = TODAY
 
     item_el = etree.Element("item")
 
@@ -1498,6 +1533,7 @@ def main(
     check_xsd: bool = True,
     max_records: int = 0,
     config_file: Optional[str] = None,
+    ref_date: Optional[date] = None,
     skip_sru_check: bool = False,
 ) -> None:
     # 1) logger bootstrap (INFO)
@@ -1599,7 +1635,7 @@ def main(
         start_spc_page=spc_page,
         spc_rpp=spc_rpp,
         logger=logger,
-        ref=None,
+        ref=ref_date,
         of_format=of_format,
     )
 
@@ -1924,7 +1960,7 @@ def main(
             "item_errors",
         ]
 
-        report_filename = f"{general_cfg['report_prefix']}{date.today().isoformat()}.csv"
+        report_filename = f"{general_cfg['report_prefix']}{TODAY}.csv"
         report_dir = Path(REPORT_DIR)
         report_dir.mkdir(parents=True, exist_ok=True)
         csv_path = report_dir / report_filename
@@ -1972,6 +2008,12 @@ def parse_args() -> argparse.Namespace:
         "--use-static-url",
         action="store_true",
         help="Utiliser l'URL Infoscience statique de test au lieu de la pagination dynamique.",
+    )
+    parser.add_argument(
+        "--since-date",
+        type=str,
+        default=None,
+        help="Date de référence YYYY-MM-DD pour Infoscience"
     )
     parser.add_argument(
         "--spc-page",
@@ -2023,9 +2065,15 @@ def parse_args() -> argparse.Namespace:
 
 if __name__ == "__main__":
     args = parse_args()
+
+    ref_date = None
+    if args.since_date:
+        ref_date = datetime.strptime(args.since_date, "%Y-%m-%d").date()
+
     main(
         dry_run=args.dry_run,
         use_static_url=args.use_static_url,
+        ref_date=ref_date,
         spc_page=args.spc_page,
         spc_rpp=args.spc_rpp,
         env=args.env,

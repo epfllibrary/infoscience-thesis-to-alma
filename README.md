@@ -1,71 +1,77 @@
-# create_records.py — Documentation
+# create_records.py - Documentation
 
-Python script that automatically creates **bibliographic records**, **holdings**, and **items** in Alma from **MARCXML** notices exported from [Infoscience (EPFL)](https://infoscience.epfl.ch).
+Python script that automatically creates **bibliographic records**,
+**holdings**, and **items** in Alma from **MARCXML** notices exported
+from [Infoscience (EPFL)](https://infoscience.epfl.ch).
 
----
+------------------------------------------------------------------------
 
-**Author:** Sylvain Vuilleumier  
-Documentary engineering specialist – EPFL  
-sylvain.vuilleumier@epfl.ch  
-**License: Apache 2.0**
+**Author:** Sylvain Vuilleumier
+Documentary engineering specialist - EPFL
+sylvain.vuilleumier@epfl.ch
 
----
+------------------------------------------------------------------------
 
 ## 🧭 Key Features
 
-- Automatic harvesting of EPFL theses from Infoscience (Discover/Export API)
-- Full pagination using `spc.page`
-- Custom MARC mapping (Infoscience → EPFL MARC21)
-- Optional XSD validation for MARC21, bib, holding, item
-- SRU lookup in swisscovery
-- Automated Alma creation:
-  - Bibliographic record (IzBib)
-  - Holdings per location
-  - Items with configurable policies
-- Generates a clear **CSV report**
-- **Dry-run mode** to test without modifying Alma
-- Full configuration via `create_records.ini`
+-   Automatic harvesting of EPFL theses from Infoscience
+    (Discover/Export API)
+-   Full pagination using `spc.page`
+-   Custom MARC mapping (Infoscience → EPFL MARC21)
+-   Optional XSD validation for MARC21, bib, holding, item
+-   SRU lookup in swisscovery
+-   Automated Alma creation:
+    -   Bibliographic record (IzBib)
+    -   Holdings per location
+    -   Items with configurable policies
+-   Generates a clear **CSV report**
+-   **Dry-run mode** to test without modifying Alma
+-   Full configuration via `create_records.ini`
 
----
+------------------------------------------------------------------------
 
 ## 📌 Workflow Summary
 
-1. Retrieves the latest call number via **Alma Analytics**.  
-2. Harvests notices from **Infoscience**, using **automatic pagination** (`spc.page`).  
-3. Converts each source notice into the **final EPFL MARC21 record** (custom mapping).  
-4. Queries **swisscovery** via **SRU** to check if a record already exists.  
-5. If not found:
-   - Generates an Alma `<bib>` structure  
-   - Optionally validates XML using **XSD schemas**  
-   - Creates the **bibliographic record** in Alma  
-   - Creates the associated **holdings** and **items**  
-6. Produces a structured **CSV report**.
+1.  Retrieves the latest call number via **Alma Analytics**.
+2.  Harvests notices from **Infoscience** using a configurable **date
+    window** and automatic pagination (`spc.page`).
+3.  Converts each source notice into the **final EPFL MARC21 record**
+    (custom mapping).
+4.  Queries **swisscovery** via **SRU** to check if a record already
+    exists.
+5.  If not found:
+    -   Generates an Alma `<bib>` structure
+    -   Optionally validates XML using **XSD schemas**
+    -   Creates the **bibliographic record** in Alma
+    -   Creates the associated **holdings** and **items**
+6.  Produces a structured **CSV report**.
 
----
+------------------------------------------------------------------------
 
 ## ⚙️ Requirements
 
-- Python **3.10+**
-- Libraries:
-  - `requests`
-  - `python-dotenv`
-  - `pymarc`
-  - `lxml`
-  - `beautifulsoup4`
-  - `almapiwrapper`
+-   Python **3.10+**
+-   Libraries:
+    -   `requests`
+    -   `python-dotenv`
+    -   `pymarc`
+    -   `lxml`
+    -   `beautifulsoup4`
+    -   `almapiwrapper`
 
 Install dependencies:
 
 ```bash
-pip install requests python-dotenv pymarc lxml beautifulsoup4 almapiwrapper
+pip install -r requirements.txt
 ```
 
-⚠️ For almapiwrapper, please check the installation guide : https://almapi-wrapper.readthedocs.io/en/latest/getstarted.html
+⚠️ For almapiwrapper, please check the installation guide :
+https://almapi-wrapper.readthedocs.io/en/latest/getstarted.html
 
-Set an environment variable named `alma_api_keys` and point it to your alma_api_key.json file.
+Set an environment variable named `alma_api_keys` and point it to your
+alma_api_key.json file.
 
-
----
+------------------------------------------------------------------------
 
 ## 🔐 Alma configuration (`.env` file)
 
@@ -81,17 +87,16 @@ ALMA_API_KEY=XXXXXXXXXXXXXXX
 
 The script also writes:
 
-```
-last_call_number.txt
-```
+    last_call_number.txt
 
-⚠️ This file is **for information only** — it is *never* used as a fallback.
+⚠️ This file is **for information only**, it is *never* used as a
+fallback.
 
-The call number is retrieved from Alma Analytics at startup.
-If the retrieval fails, the script automatically retries up to **3 times**
+The call number is retrieved from Alma Analytics at startup. If the
+retrieval fails, the script automatically retries up to **3 times**
 before stopping execution.
 
----
+------------------------------------------------------------------------
 
 ## 🧩 Main configuration (`config_sandbox.ini`)
 
@@ -129,40 +134,59 @@ material_type_code = THESIS
 
 Command‑line arguments *override* INI settings.
 
----
+------------------------------------------------------------------------
 
 ## 🌐 Infoscience Harvesting (Pagination)
 
 The script fetches MARCXML records using:
 
-```
-https://infoscience.epfl.ch/server/api/discover/export
-  ?configuration=researchoutputs
-  &spc.page=1
-  &spc.rpp=100
-  &f.types=thesis-coar-types:c_db06,authority
-  &query=dc.publisher:EPFL dc.date.created:[YYYY-MM-01 TO *]
-  &spc.sf=dc.date.accessioned
-  &spc.sd=DESC
-  &of=xm
-```
+    https://infoscience.epfl.ch/server/api/discover/export
+      ?configuration=researchoutputs
+      &spc.page=1
+      &spc.rpp=100
+      &f.types=thesis-coar-types:c_db06,authority
+      &query=dc.publisher:(EPFL) OR dc.publisher:(Ecole polytechnique federale de Lausanne) dc.date.created:[START_DATE TO END_DATE]
+      &spc.sf=dc.date.accessioned
+      &spc.sd=DESC
+      &of=xm
 
-- `spc.page` → page index (1, 2, 3, …)  
-- `spc.rpp` → results per page  
-- `of=xm` → MARCXML compatible with `pymarc`
+-   `spc.page` → page index (1, 2, 3, ...)
+-   `spc.rpp` → results per page
+-   `of=xm` → MARCXML compatible with `pymarc`
 
-`iter_infoscience_records()` keeps fetching pages until an empty page is found.
+`iter_infoscience_records()` keeps fetching pages until an empty page is
+found.
 
----
+### Date window logic
+
+The Infoscience query uses a **date range** on `dc.date.created`:
+
+    dc.date.created:[START_DATE TO END_DATE]
+
+Modes:
+
+- **Default (no option)**
+  → From the **first day of the previous month** until **today** (`END_DATE = *`)
+
+- **`--since-date YYYY-MM-DD`**
+  → The **full month** of the provided date
+
+### Examples
+
+- Run on 2026‑03‑11 (no option):
+  `[2026-02-01 TO *]`
+
+- `--since-date 2025‑03‑15`:
+  `[2025-03-01 TO 2025-03-31]`
 
 ## 📂 Optional XSD Validation
 
 Place XSD schemas under `xsd/`:
 
-- `MARC21slim.xsd`
-- `rest_bib.xsd`
-- `rest_holding.xsd`
-- `rest_item.xsd`
+-   `MARC21slim.xsd`
+-   `rest_bib.xsd`
+-   `rest_holding.xsd`
+-   `rest_item.xsd`
 
 Disable XSD validation:
 
@@ -170,7 +194,7 @@ Disable XSD validation:
 python create_records.py --no-xsd-check
 ```
 
----
+------------------------------------------------------------------------
 
 ## 🚀 Running the Script
 
@@ -182,18 +206,17 @@ python create_records.py [options]
 
 ### Main Options
 
-| Option | Description |
-|--------|-------------|
-| `--dry-run` | Runs the pipeline **without creating anything** in Alma |
-| `--use-static-url` | Fetch a single fixed Infoscience URL (debug mode) |
-| `--spc-page` | Starting page for pagination (default 1) |
-| `--spc-rpp` | Results per page (default 100) |
-| `--env` | Alma environment (`S` sandbox / `P` production) |
-| `--institution-code` | Alma IZ code (e.g., `HPH`, `EPF`) |
-| `--max-records` | Limit total processed records |
-| `--config-file` | Load configuration from an INI file |
-
----
+| Option                | Description |
+|-----------------------|-------------|
+| `--dry-run`           | Runs the pipeline **without creating anything** in Alma |
+| `--use-static-url`    | Fetches a single fixed Infoscience URL (debug mode) |
+| `--spc-page`          | Starting page for pagination (default: 1) |
+| `--spc-rpp`           | Results per page (default: 100) |
+| `--env`               | Alma environment (`S` sandbox / `P` production) |
+| `--institution-code`  | Alma IZ code (e.g., `HPH`, `EPF`) |
+| `--since-date`        | Uses a custom Infoscience reference date (`YYYY-MM-DD`). Harvests the **entire month** of that date |
+| `--max-records`       | Limits total processed records |
+| `--config-file`       | Loads configuration from an INI file |
 
 ## 🧪 Usage Examples
 
@@ -212,7 +235,7 @@ python create_records.py --dry-run --use-static-url
 ### 3. Full run with config file + pagination
 
 ```bash
-python create_records.py   --config-file create_records.ini   --env S   --institution-code HPH   --max-records 10
+python create_records.py --config-file create_records.ini --env S --institution-code HPH --max-records 10
 ```
 
 ### 4. Run without XSD validation
@@ -221,120 +244,130 @@ python create_records.py   --config-file create_records.ini   --env S   --instit
 python create_records.py --no-xsd-check --max-records 3
 ```
 
----
+### 5. Harvest a specific month
+
+```bash
+python create_records.py --since-date 2025-03-15
+```
+
+This will harvest records created in **March 2025**:
+
+    dc.date.created:[2025-03-01 TO 2025-03-31]
+
+------------------------------------------------------------------------
 
 ## 📄 CSV Report
 
 Output file:
 
-```
-report_YYYY-MM-DD.csv
-```
+    report_YYYY-MM-DD.csv
 
 Contains fields such as:
 
-- Index  
-- Infoscience ID  
-- Title / Author  
-- Call number  
-- SRU match  
-- MMS ID  
-- Bib status  
-- Holdings & items per location
-- Warning (if any)
-- Errors (if any)
+-   Index
+-   Infoscience ID
+-   Title / Author
+-   Call number
+-   SRU match
+-   MMS ID
+-   Bib status
+-   Holdings & items per location
+-   Warning (if any)
+-   Errors (if any)
 
----
+------------------------------------------------------------------------
 
 ### Warnings column
 
-The CSV report includes a `warnings` column intended for **functional warnings**
-that do not stop the processing but require attention.
+The CSV report includes a `warnings` column intended for **functional
+warnings** that do not stop the processing but require attention.
 
 Typical examples:
 
-- Record already exists in swisscovery (SRU):
-  - bibliographic creation is skipped
-  - no call number is assigned
-  - `call_number = N/A`
-  - a warning explains the reason
+-   Record already exists in swisscovery (SRU):
+    -   bibliographic creation is skipped
+    -   no call number is assigned
+    -   `call_number = N/A`
+    -   a warning explains the reason
 
-Warnings are meant to provide **human-readable explanations**
-for non-blocking situations.
+Warnings are meant to provide **human-readable explanations** for
+non-blocking situations.
 
 ### Call number assignment rules
 
-The call number is assigned **only when a bibliographic record is actually created in Alma**.
+The call number is assigned **only when a bibliographic record is
+actually created in Alma**.
 
 If a record is found in swisscovery via SRU:
 
-- creation is skipped
-- the call number is not consumed
-- the CSV report contains:
+-   creation is skipped
+-   the call number is not consumed
+-   the CSV report contains:
 
-call_number = N/A
-bib_status = SKIPPED_SRU_EXISTS
-warnings = Record already exists in SRU: call number not assigned
+CSV Report example :
+
+| call_number | bib_status         | warnings                                           |
+|-------------|--------------------|----------------------------------------------------|
+| N/A         | SKIPPED_SRU_EXISTS | Record already exists in SRU: call number not assigned |
+
+------------------------------------------------------------------------
 
 ## 🪵 Logging
 
 Two log files are generated:
 
-- `create_records.log` — normal operations (INFO+)  
-- `erreurs.log` — detailed errors (ERROR+, with traceback)
+-   `create_records.log` : normal operations (INFO+)
+-   `erreurs.log` : detailed errors (ERROR+, with traceback)
 
 Wrapper noise like `"no holding found"` is automatically filtered.
 
----
+------------------------------------------------------------------------
 
 ## 🧱 Code Structure
 
-- Configuration loader (INI + `.env`)  
-- Logger and error handler  
-- MARC transformation layer  
-- HTML normalization layer for Infoscience metadata (BeautifulSoup)
-- XSD validation engine  
-- Infoscience harvesting with pagination  
-- SRU lookup  
-- Alma integration (Bib / Holding / Item)  
-- CSV report generator  
-- CLI interface (argparse)  
-- Main pipeline  
+-   Configuration loader (INI + `.env`)
+-   Logger and error handler
+-   MARC transformation layer
+-   HTML normalization layer for Infoscience metadata (BeautifulSoup)
+-   XSD validation engine
+-   Infoscience harvesting with pagination
+-   SRU lookup
+-   Alma integration (Bib / Holding / Item)
+-   CSV report generator
+-   CLI interface (argparse)
+-   Main pipeline
 
----
-
+------------------------------------------------------------------------
 
 ## ⚠️ Known limitations and special handling
 
 ### Infoscience HTML contamination in titles
 
-Infoscience sometimes returns MARC titles containing HTML markup
-(`<i>`, `<sub>`, `<sup>`, `<span>`, entities like `&amp;`, etc.).
-These elements:
+Infoscience sometimes returns MARC titles containing HTML markup (`<i>`,
+`<sub>`, `<sup>`, `<span>`, entities like `&amp;`, etc.). These
+elements:
 
-- pollute Alma bibliographic records
-- break SRU lookups
-- degrade CSV exports
+-   pollute Alma bibliographic records
+-   break SRU lookups
+-   degrade CSV exports
 
-For this reason, the script applies systematic HTML normalization
-(using BeautifulSoup) on:
+For this reason, the script applies systematic HTML normalization (using
+BeautifulSoup) on:
 
-- MARC 245$a
-- MARC 245$b
-- responsibility statements (245$c)
+-   MARC 245\$a
+-   MARC 245\$b
+-   responsibility statements (245\$c)
 
 Example:
 
-```
-Before:
-<i>Data-driven</i> Control &amp; Optimization
+    Before:
+    <i>Data-driven</i> Control &amp; Optimization
 
-After:
-Data-driven Control & Optimization
-```
+    After:
+    Data-driven Control & Optimization
 
-This normalization is applied **before** MARC generation, SRU lookup
-and CSV reporting.
+This normalization is applied **before** MARC generation, SRU lookup and
+CSV reporting.
 
 ### Alma Work Order API limitation
 
@@ -354,20 +387,15 @@ These are transmitted to Alma using:
 <work_order_at>...</work_order_at>
 ```
 
-However, as of 2025, Alma’s REST API ignores these values:
+However, as of 2025, Alma's REST API ignores these values:
 
-- items are created successfully
-- but no Work Order is visible in the Alma UI
+-   items are created successfully
+-   but no Work Order is visible in the Alma UI
 
-This is an API limitation, not a bug in the script.
-The fields are kept for future compatibility.
+This is an API limitation, not a bug in the script. The fields are kept
+for future compatibility.
 
-
-## ✨ Future Ideas
-
-- Add `--since-date` for custom Infoscience time windows  
-- Add CLI for changing `of_format` (`xm`, `xmJ`, …)  
 
 ## 📜 License
 
-Distributed under the **Apache License 2.0**.
+Distributed under the **License: GNU General Public License v3.0**.
